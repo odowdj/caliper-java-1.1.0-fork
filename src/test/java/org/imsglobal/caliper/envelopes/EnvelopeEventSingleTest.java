@@ -18,7 +18,10 @@
 
 package org.imsglobal.caliper.envelopes;
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.guava.GuavaModule;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
 import org.imsglobal.caliper.Envelope;
@@ -40,6 +43,7 @@ import org.imsglobal.caliper.entities.resource.Assessment;
 import org.imsglobal.caliper.entities.resource.Attempt;
 import org.imsglobal.caliper.entities.session.Session;
 import org.imsglobal.caliper.events.AssessmentEvent;
+import org.imsglobal.caliper.events.Event;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.junit.After;
@@ -149,10 +153,33 @@ public class EnvelopeEventSingleTest {
         // sensor.send(client, envelope);
     }
 
+    public ObjectMapper createCaliperObjectMapper2() {
+        ObjectMapper mapper = TestUtils.createCaliperObjectMapper();
+        mapper.registerModules(new GuavaModule()); // to get around the deserializing Immutable collections problem
+
+        mapper.setVisibility(mapper.getSerializationConfig()
+                .getDefaultVisibilityChecker()
+                .withFieldVisibility(JsonAutoDetect.Visibility.ANY)
+                .withGetterVisibility(JsonAutoDetect.Visibility.NONE)
+                .withSetterVisibility(JsonAutoDetect.Visibility.NONE)
+                .withCreatorVisibility(JsonAutoDetect.Visibility.NONE));
+        return mapper;
+    }
+
     @Test
     public void testSerializedEnvelope() throws Exception {
         ObjectMapper mapper = TestUtils.createCaliperObjectMapper();
         String json = mapper.writeValueAsString(envelope);
+
+        mapper.addMixIn(Envelope.class, EnvelopeMixin.class);
+        Envelope envelope2 = mapper.readValue(json, Envelope.class);
+
+        JsonNode jsonNode = mapper.readTree(json);
+        JsonNode dataElement = jsonNode.findPath("data").get(0);
+
+        ObjectMapper mapper2 = createCaliperObjectMapper2();
+        mapper2.addMixIn(Event.class, EventMixin.class);
+        Event event1 = mapper2.treeToValue(dataElement, Event.class);
 
         // Swap out sendTime=DateTime.now() in favor of fixture value (or test will most assuredly fail).
         Pattern pattern = Pattern.compile("\"sendTime\":\"[^\"]*\"");
